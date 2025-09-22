@@ -1,0 +1,5 @@
+{
+  "name": "MLflow Orchestrator",
+  "description": "A low-code/no-code drag-and-drop application to create, visualize, and edit machine learning workflows for regression, classification, and time series forecasting, following the MLflow orchestration standard.",
+  "requestFramePermissions": []
+}
