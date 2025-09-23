@@ -1,6 +1,7 @@
 
 
 
+
 import React from 'react';
 
 interface HeaderProps {
@@ -16,12 +17,14 @@ interface HeaderProps {
   isPropertiesPanelVisible: boolean;
   onRunWorkflow: () => void;
   isExecuting: boolean;
+  onToggleChat: () => void;
+  isChatPanelVisible: boolean;
 }
 
 const Header: React.FC<HeaderProps> = ({ 
     onExport, onUndo, onRedo, canUndo, canRedo, onLaunchMlflow,
     onToggleSidebar, onToggleProperties, isSidebarVisible, isPropertiesPanelVisible,
-    onRunWorkflow, isExecuting
+    onRunWorkflow, isExecuting, onToggleChat, isChatPanelVisible
  }) => {
   return (
     <header className="bg-gray-900/80 backdrop-blur-sm border-b border-gray-700/50 p-3 flex justify-between items-center z-20">
@@ -41,6 +44,18 @@ const Header: React.FC<HeaderProps> = ({
         <h1 className="text-xl font-bold text-white">MLflow Orchestrator</h1>
       </div>
       <div className="flex items-center space-x-2">
+        <button
+            onClick={onToggleChat}
+            className={`flex items-center space-x-2 px-4 py-2 rounded-md transition-colors ${isChatPanelVisible ? 'bg-cyan-500/20 text-cyan-400' : 'text-gray-400 hover:bg-gray-700 hover:text-white'}`}
+            title={isChatPanelVisible ? "Hide Chat" : "Show Chat"}
+          >
+             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M18 10c0 3.866-3.582 7-8 7a8.839 8.839 0 01-4.083-.98L2 17l1.083-3.083A7.002 7.002 0 012 10c0-3.866 3.582-7 8-7s8 3.134 8 7zM4.75 9.25a.75.75 0 01.75-.75h8.5a.75.75 0 010 1.5h-8.5a.75.75 0 01-.75-.75zm.75 2.25a.75.75 0 000 1.5h4.5a.75.75 0 000-1.5h-4.5z" clipRule="evenodd" />
+            </svg>
+            <span>AI Chat</span>
+        </button>
+        <div className="w-px h-6 bg-gray-700"></div>
+
         <div className="flex rounded-md shadow-sm" role="group">
           <button
             onClick={onUndo}

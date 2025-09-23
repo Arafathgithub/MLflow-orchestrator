@@ -1,7 +1,3 @@
-
-
-
-
 import React, { useState, useRef, useCallback, useMemo } from 'react';
 import ReactFlow, {
   ReactFlowProvider,
@@ -15,8 +11,9 @@ import ReactFlow, {
   NodeChange,
   EdgeChange,
 } from 'reactflow';
-import { NodeData, NodeType, EvaluateNodeData, NodeStatus } from './types';
-import { INITIAL_NODES, INITIAL_EDGES, SIDEBAR_NODES } from './constants';
+import { GoogleGenAI, Type } from "@google/genai";
+import { NodeData, NodeType, EvaluateNodeData, NodeStatus, ChatMessage } from './types';
+import { INITIAL_NODES, INITIAL_EDGES, SIDEBAR_NODES, CHAT_SYSTEM_INSTRUCTION } from './constants';
 import Header from './components/Header';
 import Sidebar from './components/Sidebar';
 import PropertiesPanel from './components/PropertiesPanel';
@@ -24,6 +21,7 @@ import CustomNode from './components/customNodes/CustomNode';
 import VisualizationModal from './components/VisualizationModal';
 import ConfirmationModal from './components/ConfirmationModal';
 import ExecutionLogPanel from './components/ExecutionLogPanel';
+import ChatPanel from './components/ChatPanel';
 
 let id = INITIAL_NODES.length + 1;
 const getId = () => `dndnode_${id++}`;
@@ -63,6 +61,12 @@ const App: React.FC = () => {
   const [executionStatus, setExecutionStatus] = useState<Record<string, NodeStatus>>({});
   const [executionLogs, setExecutionLogs] = useState<LogEntry[]>([]);
   const [isLogPanelVisible, setIsLogPanelVisible] = useState(false);
+
+  // Chat State
+  const [isChatPanelVisible, setIsChatPanelVisible] = useState(false);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const ai = useMemo(() => new GoogleGenAI({ apiKey: process.env.API_KEY as string }), []);
+
 
   const [history, setHistory] = useState([{ nodes: INITIAL_NODES, edges: INITIAL_EDGES }]);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -143,6 +147,17 @@ const App: React.FC = () => {
     event.dataTransfer.dropEffect = 'move';
   }, []);
 
+  const addNodeToWorkflow = useCallback((newNode: Node<NodeData>) => {
+    setHistory(h => {
+      const currentFlow = h[currentIndex];
+      const newNodes = currentFlow.nodes.concat(newNode);
+      const newHistory = h.slice(0, currentIndex + 1);
+      newHistory.push({ nodes: newNodes, edges: currentFlow.edges });
+      setCurrentIndex(newHistory.length - 1);
+      return newHistory;
+    });
+  }, [currentIndex]);
+  
   const addNode = useCallback((type: NodeType, position: { x: number; y: number }) => {
     const nodeTemplate = SIDEBAR_NODES.find(n => n.type === type);
     if (!nodeTemplate) return;
@@ -153,16 +168,8 @@ const App: React.FC = () => {
       position,
       data: JSON.parse(JSON.stringify(nodeTemplate.data)), // Deep copy
     };
-
-    setHistory(h => {
-      const currentFlow = h[currentIndex];
-      const newNodes = currentFlow.nodes.concat(newNode);
-      const newHistory = h.slice(0, currentIndex + 1);
-      newHistory.push({ nodes: newNodes, edges: currentFlow.edges });
-      setCurrentIndex(newHistory.length - 1);
-      return newHistory;
-    });
-  }, [currentIndex]);
+    addNodeToWorkflow(newNode);
+  }, [addNodeToWorkflow]);
 
   const onDrop = useCallback(
     (event: React.DragEvent<HTMLDivElement>) => {
@@ -399,6 +406,162 @@ const App: React.FC = () => {
     }));
   }, [nodes, handleDeleteRequest, executionStatus]);
 
+  // --- Chat AI Logic ---
+  const toggleChatPanel = useCallback(() => setIsChatPanelVisible(v => !v), []);
+
+  const findNodeByLabel = (label: string): Node<NodeData> | undefined => {
+    return [...nodes].reverse().find(n => n.data.label === label);
+  };
+  
+  const processAiActions = useCallback((actions: any[]) => {
+    for (const action of actions) {
+        switch (action.action) {
+            case 'add_node': {
+                const nodeTemplate = SIDEBAR_NODES.find(n => n.type === action.node_type);
+                if (nodeTemplate && reactFlowInstance && reactFlowWrapper.current) {
+                    const { width, height } = reactFlowWrapper.current.getBoundingClientRect();
+                    const position = reactFlowInstance.project({
+                        x: width / 2 - 75 + Math.random() * 150,
+                        y: height / 2 - 50 + Math.random() * 100,
+                    });
+                    
+                    const newNodeData = JSON.parse(JSON.stringify(nodeTemplate.data));
+                    newNodeData.label = action.label;
+                    
+                    const newNode: Node<NodeData> = {
+                        id: getId(),
+                        type: action.node_type,
+                        position,
+                        data: newNodeData,
+                    };
+                    addNodeToWorkflow(newNode);
+                }
+                break;
+            }
+            case 'connect_nodes': {
+                const sourceNode = findNodeByLabel(action.source_label);
+                const targetNode = findNodeByLabel(action.target_label);
+                if (sourceNode && targetNode) {
+                    onConnect({
+                        source: sourceNode.id,
+                        target: targetNode.id,
+                        sourceHandle: action.source_handle,
+                        targetHandle: action.target_handle,
+                    });
+                }
+                break;
+            }
+            case 'update_node_config': {
+                const nodeToUpdate = findNodeByLabel(action.node_label);
+                if (nodeToUpdate && action.config) {
+                    try {
+                        // The AI model should return a JSON string per the prompt, but we handle an object for robustness.
+                        const configObject = typeof action.config === 'string'
+                            ? JSON.parse(action.config)
+                            : action.config;
+                        updateNodeConfig(nodeToUpdate.id, configObject);
+                    } catch (e) {
+                        console.error("AI Action Error: Failed to parse 'config' JSON string for update_node_config.", { config: action.config, error: e });
+                    }
+                }
+                break;
+            }
+            case 'delete_node': {
+                const nodeToDelete = findNodeByLabel(action.node_label);
+                if (nodeToDelete) {
+                    deleteNode(nodeToDelete.id);
+                }
+                break;
+            }
+            case 'run_workflow': {
+                handleRunWorkflow();
+                break;
+            }
+            default:
+                console.warn('Unknown AI action:', action);
+        }
+    }
+  }, [reactFlowInstance, nodes, addNodeToWorkflow, onConnect, updateNodeConfig, deleteNode, handleRunWorkflow]);
+
+
+  const handleSendMessage = useCallback(async (message: string) => {
+    const userMessage: ChatMessage = { id: Date.now().toString(), role: 'user', text: message };
+    const thinkingMessage: ChatMessage = { id: (Date.now() + 1).toString(), role: 'assistant', text: '', isThinking: true };
+    
+    setChatMessages(prev => [...prev, userMessage, thinkingMessage]);
+
+    const fullHistory = [...chatMessages, userMessage].map(m => ({
+        role: m.role,
+        parts: [{ text: m.text }],
+    }));
+    
+    // Gemini API only allows user/model roles
+    const modelHistory = fullHistory.map(m => m.role === 'assistant' ? ({...m, role: 'model'}) : m);
+
+    try {
+        const responseSchema = {
+            type: Type.OBJECT,
+            properties: {
+                actions: {
+                    type: Type.ARRAY,
+                    description: "An array of command objects to be executed by the application.",
+                    items: { 
+                        type: Type.OBJECT,
+                        properties: {
+                            action: { type: Type.STRING, description: "The type of action to perform. Must be one of: 'add_node', 'connect_nodes', 'update_node_config', 'delete_node', 'run_workflow'." },
+                            node_type: { type: Type.STRING, description: "For 'add_node': the type of node to add." },
+                            label: { type: Type.STRING, description: "For 'add_node': the descriptive label for the new node." },
+                            source_label: { type: Type.STRING, description: "For 'connect_nodes': the label of the source node." },
+                            target_label: { type: Type.STRING, description: "For 'connect_nodes': the label of the target node." },
+                            source_handle: { type: Type.STRING, description: "For 'connect_nodes' (optional): the specific output handle on the source node." },
+                            target_handle: { type: Type.STRING, description: "For 'connect_nodes' (optional): the specific input handle on the target node." },
+                            node_label: { type: Type.STRING, description: "For 'update_node_config' or 'delete_node': the label of the target node." },
+                            config: { type: Type.STRING, description: "For 'update_node_config': a JSON string of properties to change." }
+                        },
+                        required: ['action']
+                    }
+                },
+                response: { type: Type.STRING, description: "A conversational, natural language string to show to the user." }
+            },
+            required: ['actions', 'response']
+        };
+
+        const response = await ai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: [...modelHistory, { role: 'user', parts: [{ text: message }] }],
+            config: {
+                systemInstruction: CHAT_SYSTEM_INSTRUCTION,
+                responseMimeType: "application/json",
+                responseSchema: responseSchema,
+            },
+        });
+
+        const jsonText = response.text.trim();
+        const aiResponse = JSON.parse(jsonText);
+
+        if (aiResponse.actions && aiResponse.actions.length > 0) {
+            processAiActions(aiResponse.actions);
+        }
+
+        const assistantMessage: ChatMessage = {
+            id: (Date.now() + 1).toString(),
+            role: 'assistant',
+            text: aiResponse.response || "Here you go!",
+        };
+        setChatMessages(prev => [...prev.slice(0, -1), assistantMessage]);
+
+    } catch (error) {
+        console.error("Error calling Gemini API:", error);
+        const errorMessage: ChatMessage = {
+            id: (Date.now() + 1).toString(),
+            role: 'assistant',
+            text: "Sorry, I encountered an error. Please try again.",
+        };
+        setChatMessages(prev => [...prev.slice(0, -1), errorMessage]);
+    }
+  }, [ai, chatMessages, processAiActions]);
+
+
   return (
     <div className="flex flex-col h-screen font-sans">
       <Header 
@@ -414,6 +577,8 @@ const App: React.FC = () => {
         isPropertiesPanelVisible={isPropertiesPanelVisible}
         onRunWorkflow={handleRunWorkflow}
         isExecuting={isExecuting}
+        onToggleChat={toggleChatPanel}
+        isChatPanelVisible={isChatPanelVisible}
       />
       <div className="flex flex-grow overflow-hidden">
         <ReactFlowProvider>
@@ -468,6 +633,12 @@ const App: React.FC = () => {
         logs={executionLogs}
         isOpen={isLogPanelVisible}
         onClose={() => setIsLogPanelVisible(false)}
+      />
+      <ChatPanel
+        isOpen={isChatPanelVisible}
+        onClose={toggleChatPanel}
+        messages={chatMessages}
+        onSendMessage={handleSendMessage}
       />
     </div>
   );

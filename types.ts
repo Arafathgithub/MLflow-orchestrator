@@ -1,6 +1,7 @@
 
 
 
+
 export type NodeStatus = 'idle' | 'running' | 'success' | 'error';
 
 export enum NodeType {
@@ -88,3 +89,10 @@ export type NodeData =
   | FeatureEngineeringNodeData
   | ExportModelNodeData
   | PythonScriptNodeData;
+
+export interface ChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  text: string;
+  isThinking?: boolean;
+}
