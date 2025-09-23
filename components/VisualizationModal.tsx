@@ -29,7 +29,40 @@ const generateRocData = () => {
     return points;
 }
 
-const METRIC_CONFIG: Record<string, { type: 'score' | 'error' | 'roc', dataGen: () => any }> = {
+// Helper to generate mock confusion matrix data
+const generateConfusionMatrixData = () => {
+    const total = 200;
+    const correct = Math.floor(generateScore(0.75, 0.95) * total);
+    const incorrect = total - correct;
+    
+    const tp = Math.floor(correct * generateScore(0.8, 0.98));
+    const tn = correct - tp;
+    
+    const fp = Math.floor(incorrect * generateScore(0.3, 0.7));
+    const fn = incorrect - fp;
+    
+    return { tp, tn, fp, fn };
+};
+
+// Helper to generate data points for a Precision-Recall curve
+const generatePrCurveData = () => {
+    let points = [{ recall: 0, precision: 1.0 }];
+    let lastRecall = 0;
+    let lastPrecision = 1.0;
+    while (lastRecall < 0.95) {
+        lastRecall += Math.random() * 0.15;
+        lastPrecision -= Math.random() * 0.1 * lastPrecision;
+        points.push({
+            recall: parseFloat(Math.min(1.0, lastRecall).toFixed(2)),
+            precision: parseFloat(Math.max(0, lastPrecision).toFixed(2))
+        });
+    }
+    points.push({ recall: 1.0, precision: Math.max(0, points[points.length-1].precision * generateScore(0.4, 0.6)) });
+    return points.sort((a,b) => a.recall - b.recall);
+};
+
+
+const METRIC_CONFIG: Record<string, { type: string, dataGen: () => any }> = {
     'Accuracy': { type: 'score', dataGen: () => [{ name: 'Accuracy', value: generateScore() }] },
     'Precision': { type: 'score', dataGen: () => [{ name: 'Precision', value: generateScore() }] },
     'Recall': { type: 'score', dataGen: () => [{ name: 'Recall', value: generateScore() }] },
@@ -38,7 +71,11 @@ const METRIC_CONFIG: Record<string, { type: 'score' | 'error' | 'roc', dataGen: 
     'ROC AUC': { type: 'roc', dataGen: generateRocData },
     'MAE': { type: 'error', dataGen: () => [{ name: 'MAE', value: generateError(5, 20) }] },
     'MSE': { type: 'error', dataGen: () => [{ name: 'MSE', value: generateError(20, 100) }] },
-}
+    'Confusion Matrix': { type: 'confusionMatrix', dataGen: generateConfusionMatrixData },
+    'Precision-Recall Curve': { type: 'prCurve', dataGen: generatePrCurveData },
+};
+
+const CLASSIFICATION_METRICS = new Set(['Accuracy', 'Precision', 'Recall', 'F1-Score', 'ROC AUC']);
 
 const ChartCard: React.FC<{ title: string, children: React.ReactNode }> = ({ title, children }) => (
     <div className="bg-gray-900/50 p-4 rounded-lg border border-gray-700">
@@ -50,15 +87,28 @@ const ChartCard: React.FC<{ title: string, children: React.ReactNode }> = ({ tit
 );
 
 const VisualizationModal: React.FC<VisualizationModalProps> = ({ node, onClose }) => {
+    const metricsToDisplay = useMemo(() => {
+        const selectedMetrics = node.data.metrics;
+        const hasClassificationMetric = selectedMetrics.some(m => CLASSIFICATION_METRICS.has(m));
+        
+        const allMetrics = new Set(selectedMetrics);
+        
+        if (hasClassificationMetric) {
+            allMetrics.add('Confusion Matrix');
+            allMetrics.add('Precision-Recall Curve');
+        }
+        return Array.from(allMetrics);
+    }, [node.data.metrics]);
+
     const chartData = useMemo(() => {
         const data: Record<string, any> = {};
-        node.data.metrics.forEach(metric => {
+        metricsToDisplay.forEach(metric => {
             if (METRIC_CONFIG[metric]) {
                 data[metric] = METRIC_CONFIG[metric].dataGen();
             }
         });
         return data;
-    }, [node.data.metrics, node.id]);
+    }, [metricsToDisplay, node.id]);
 
     const renderChart = (metric: string) => {
         const config = METRIC_CONFIG[metric];
@@ -95,10 +145,10 @@ const VisualizationModal: React.FC<VisualizationModalProps> = ({ node, onClose }
                      <ResponsiveContainer width="100%" height="100%">
                         <LineChart data={data} margin={{ top: 5, right: 30, left: 20, bottom: 20 }}>
                             <CartesianGrid strokeDasharray="3 3" stroke="#4A5568" />
-                            <XAxis dataKey="fpr" type="number" stroke="#A0AEC0">
+                            <XAxis dataKey="fpr" type="number" stroke="#A0AEC0" domain={[0, 1]}>
                                 <Label value="False Positive Rate" offset={-15} position="insideBottom" fill="#A0AEC0" />
                             </XAxis>
-                            <YAxis stroke="#A0AEC0">
+                            <YAxis stroke="#A0AEC0" domain={[0, 1]}>
                                  <Label value="True Positive Rate" angle={-90} position="insideLeft" fill="#A0AEC0" style={{textAnchor: 'middle'}} />
                             </YAxis>
                             <Tooltip contentStyle={{ backgroundColor: '#1A202C', border: '1px solid #4A5568' }} />
@@ -107,6 +157,59 @@ const VisualizationModal: React.FC<VisualizationModalProps> = ({ node, onClose }
                             <Line type="linear" dataKey="fpr" stroke="#718096" strokeWidth={1} strokeDasharray="5 5" dot={false} name="Random" />
                         </LineChart>
                     </ResponsiveContainer>
+                );
+            case 'confusionMatrix':
+                return (
+                    <div className="flex h-full w-full flex-col items-center justify-center text-sm text-gray-300">
+                        <div className="mb-1 text-gray-400">Predicted</div>
+                        <div className="flex">
+                            <div className="flex -rotate-180 transform flex-col justify-center text-gray-400" style={{ writingMode: 'vertical-rl' }}>
+                                Actual
+                            </div>
+                            <div className="ml-2 flex flex-col">
+                                <div className="flex">
+                                    <div className="w-16"></div>
+                                    <div className="w-20 text-center font-bold">Positive</div>
+                                    <div className="w-20 text-center font-bold">Negative</div>
+                                </div>
+                                <div className="flex items-center">
+                                    <div className="w-16 text-right font-bold pr-2">Positive</div>
+                                    <div className="m-0.5 flex h-20 w-20 flex-col items-center justify-center rounded bg-green-500/20 text-green-300">
+                                        <div className="text-2xl font-bold">{data.tp}</div><div>TP</div>
+                                    </div>
+                                    <div className="m-0.5 flex h-20 w-20 flex-col items-center justify-center rounded bg-orange-500/20 text-orange-300">
+                                        <div className="text-2xl font-bold">{data.fn}</div><div>FN</div>
+                                    </div>
+                                </div>
+                                <div className="flex items-center">
+                                    <div className="w-16 text-right font-bold pr-2">Negative</div>
+                                    <div className="m-0.5 flex h-20 w-20 flex-col items-center justify-center rounded bg-red-500/20 text-red-300">
+                                        <div className="text-2xl font-bold">{data.fp}</div><div>FP</div>
+                                    </div>
+                                    <div className="m-0.5 flex h-20 w-20 flex-col items-center justify-center rounded bg-blue-500/20 text-blue-300">
+                                        <div className="text-2xl font-bold">{data.tn}</div><div>TN</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                );
+            case 'prCurve':
+                return (
+                    <ResponsiveContainer width="100%" height="100%">
+                       <LineChart data={data} margin={{ top: 5, right: 30, left: 20, bottom: 20 }}>
+                           <CartesianGrid strokeDasharray="3 3" stroke="#4A5568" />
+                           <XAxis dataKey="recall" type="number" stroke="#A0AEC0" domain={[0, 1]}>
+                               <Label value="Recall" offset={-15} position="insideBottom" fill="#A0AEC0" />
+                           </XAxis>
+                           <YAxis stroke="#A0AEC0" domain={[0, 1]}>
+                                <Label value="Precision" angle={-90} position="insideLeft" fill="#A0AEC0" style={{textAnchor: 'middle'}} />
+                           </YAxis>
+                           <Tooltip contentStyle={{ backgroundColor: '#1A202C', border: '1px solid #4A5568' }} />
+                           <Legend wrapperStyle={{ color: '#A0AEC0' }} />
+                           <Line type="monotone" dataKey="precision" stroke="#8884d8" strokeWidth={2} dot={false} name="PR Curve" />
+                       </LineChart>
+                   </ResponsiveContainer>
                 );
             default: return null;
         }
@@ -133,9 +236,9 @@ const VisualizationModal: React.FC<VisualizationModalProps> = ({ node, onClose }
                     </button>
                 </header>
                 <main className="p-6 flex-grow overflow-y-auto">
-                    {node.data.metrics.length > 0 ? (
+                    {metricsToDisplay.length > 0 ? (
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            {node.data.metrics.map(metric => (
+                            {metricsToDisplay.map(metric => (
                                 <ChartCard key={metric} title={metric}>
                                     {renderChart(metric)}
                                 </ChartCard>

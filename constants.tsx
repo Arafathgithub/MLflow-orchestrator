@@ -1,7 +1,24 @@
 
+
+
+import React from 'react';
 import { NodeType, NodeData } from './types';
 // FIX: Import Edge type from reactflow to explicitly type INITIAL_EDGES. This resolves type inference issues that caused errors in App.tsx.
 import { Node, Edge } from 'reactflow';
+
+export const ICONS: Record<string, React.ReactNode> = {
+  [NodeType.DataSource]: <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4" /></svg>,
+  [NodeType.SplitData]: <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>,
+  [NodeType.TrainRegression]: <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" /></svg>,
+  [NodeType.TrainClassifier]: <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>,
+  [NodeType.TrainForecaster]: <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>,
+  [NodeType.Evaluate]: <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>,
+  [NodeType.Deploy]: <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>,
+  [NodeType.HyperparameterTuning]: <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>,
+  [NodeType.FeatureEngineering]: <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M4 21v-7m0-4V3m8 18v-9m0-4V3m8 18v-5m0-4V3M1 14h6M8 8h8M16 16h6" /></svg>,
+  [NodeType.ExportModel]: <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>,
+  [NodeType.PythonScript]: <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" /></svg>,
+};
 
 export const SIDEBAR_NODE_TYPES = {
   INPUT: 'Input',
@@ -15,7 +32,23 @@ export const SIDEBAR_NODES: { category: string; label: string; type: NodeType; d
     category: SIDEBAR_NODE_TYPES.INPUT,
     label: 'Data Source',
     type: NodeType.DataSource,
-    data: { label: 'Data Source', sourcePath: '/path/to/data.csv', pythonCode: 'import pandas as pd\ndf = pd.read_csv("path/to/your/data.csv")\n# This dataframe will be available to the next step' },
+    data: { label: 'Data Source', sourcePath: '/path/to/data.csv', pythonCode: `import pandas as pd
+
+# Option 1: Load from a local file path
+df = pd.read_csv("path/to/your/data.csv")
+
+# Option 2: Load from a URL (e.g., a raw CSV on GitHub)
+# url = "https://example.com/data.csv"
+# df = pd.read_csv(url)
+
+# For APIs or files requiring special handling, you might use requests
+# import requests
+# import io
+# response = requests.get(url)
+# response.raise_for_status() # Ensure the request was successful
+# df = pd.read_csv(io.StringIO(response.text))
+
+# This dataframe will be available to the next step` },
   },
   {
     category: SIDEBAR_NODE_TYPES.TRANSFORM,
@@ -38,6 +71,28 @@ export const SIDEBAR_NODES: { category: string; label: string; type: NodeType; d
 scaler = StandardScaler()
 cols_to_scale = ['age', 'income']
 df[cols_to_scale] = scaler.fit_transform(df[cols_to_scale])`
+    },
+  },
+  {
+    category: SIDEBAR_NODE_TYPES.TRANSFORM,
+    label: 'Python Script',
+    type: NodeType.PythonScript,
+    data: {
+      label: 'Python Script',
+      pythonCode: `# Write your custom Python code here.
+# The input dataframe from the previous node is available as \`df\`.
+# The output must be a pandas DataFrame assigned to a \`result_df\` variable.
+
+# Example: Add a new column based on existing data
+def custom_logic(row):
+    # Add your complex logic here
+    return row['column1'] * 2 + row['column2']
+
+df['new_feature'] = df.apply(custom_logic, axis=1)
+
+result_df = df
+
+print("Custom Python script executed successfully.")`
     },
   },
   {
@@ -126,6 +181,28 @@ with mlflow.start_run() as run:
     )
 
 print("Deployment complete.")`
+    },
+  },
+  {
+    category: SIDEBAR_NODE_TYPES.EVALUATION,
+    label: 'Export Model',
+    type: NodeType.ExportModel,
+    data: { 
+      label: 'Export Model', 
+      filePath: 'models/model.pkl', 
+      pythonCode: `import joblib
+import os
+
+# Assuming 'model' is the trained model object from a previous step.
+# Define the directory and ensure it exists.
+output_dir = os.path.dirname('models/model.pkl')
+if output_dir:
+    os.makedirs(output_dir, exist_ok=True)
+
+# Save the model using joblib
+joblib.dump(model, 'models/model.pkl')
+
+print(f"Model successfully saved to: {'models/model.pkl'}")`
     },
   },
 ];

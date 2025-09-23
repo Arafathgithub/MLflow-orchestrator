@@ -14,6 +14,8 @@ import {
   DeployNodeData,
   HyperparameterTuningNodeData,
   FeatureEngineeringNodeData,
+  ExportModelNodeData,
+  PythonScriptNodeData,
 } from '../types';
 
 interface PropertiesPanelProps {
@@ -104,9 +106,31 @@ with mlflow.start_run() as run:
 print("Deployment complete.")`;
 };
 
+const generateExportModelCode = (data: ExportModelNodeData): string => {
+  const filePath = data.filePath || 'models/model.pkl';
+  return `import joblib
+import os
+
+# Assuming 'model' is the trained model object from a previous step.
+# Define the directory and ensure it exists.
+output_dir = os.path.dirname('${filePath}')
+if output_dir:
+    os.makedirs(output_dir, exist_ok=True)
+
+# Save the model using joblib
+joblib.dump(model, '${filePath}')
+
+print(f"Model successfully saved to: {'${filePath}'}")`;
+};
+
 const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ selectedNode, onUpdate, onVisualize, nodes, edges }) => {
   const [activeTab, setActiveTab] = useState<'properties' | 'code'>('properties');
   const [activePanelTab, setActivePanelTab] = useState<'inspector' | 'json'>('inspector');
+  
+  // State for data preview feature
+  const [previewData, setPreviewData] = useState<{ headers: string[], rows: string[][] } | null>(null);
+  const [isLoadingPreview, setIsLoadingPreview] = useState<boolean>(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
 
   const flowJson = useMemo(() => {
     const flow = {
@@ -117,12 +141,59 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ selectedNode, onUpdat
   }, [nodes, edges]);
 
   useEffect(() => {
+    // Reset preview state when node changes
+    setPreviewData(null);
+    setIsLoadingPreview(false);
+    setPreviewError(null);
+
     if (selectedNode) {
       setActiveTab('properties');
     } else {
       setActivePanelTab('inspector');
     }
   }, [selectedNode?.id]);
+
+  const handlePreviewData = async (sourcePath: string) => {
+    setIsLoadingPreview(true);
+    setPreviewError(null);
+    setPreviewData(null);
+
+    // Simulate network delay
+    await new Promise(resolve => setTimeout(resolve, 1000));
+
+    try {
+        // Simulate a fetch based on path. Only "churn.csv" will "succeed".
+        if (!sourcePath.toLowerCase().includes('churn.csv')) {
+            throw new Error(`File not found at path: ${sourcePath}`);
+        }
+
+        const mockCsvData = `"customerID","gender","SeniorCitizen","Partner","tenure","MonthlyCharges","Churn"
+"7590-VHVEG","Female",0,"Yes",1,29.85,"No"
+"5575-GNVDE","Male",0,"No",34,56.95,"No"
+"3668-QPYBK","Male",0,"No",2,53.85,"Yes"
+"7795-CFOCW","Male",0,"No",45,42.3,"No"
+"9237-HQITU","Female",0,"No",2,70.7,"Yes"`;
+
+        const lines = mockCsvData.trim().split('\n');
+        // Simple CSV parsing, not robust but fine for this mock
+        const headers = lines[0].split(',').map(h => h.replace(/"/g, ''));
+        const rows = lines.slice(1).map(line => line.split(',').map(cell => cell.replace(/"/g, '')));
+        
+        if (rows.length === 0) {
+           throw new Error('CSV file is empty or invalid.');
+        }
+
+        setPreviewData({ headers, rows });
+    } catch (error) {
+        if (error instanceof Error) {
+            setPreviewError(error.message);
+        } else {
+            setPreviewError("An unknown error occurred.");
+        }
+    } finally {
+        setIsLoadingPreview(false);
+    }
+  };
 
   if (!selectedNode) {
     return (
@@ -181,6 +252,12 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ selectedNode, onUpdat
       const updatedData = { ...currentData, ...newPartialData };
       const pythonCode = generateDeployCode(updatedData);
       onUpdate(selectedNode.id, { ...newPartialData, pythonCode });
+    } else if (selectedNode?.type === NodeType.ExportModel) {
+      const newPartialData = { [name]: parsedValue };
+      const currentData = selectedNode.data as ExportModelNodeData;
+      const updatedData = { ...currentData, ...newPartialData };
+      const pythonCode = generateExportModelCode(updatedData);
+      onUpdate(selectedNode.id, { ...newPartialData, pythonCode });
     } else {
       onUpdate(selectedNode.id, { [name]: parsedValue } as any);
     }
@@ -212,6 +289,60 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ selectedNode, onUpdat
           <>
             <label className="block text-sm font-medium text-gray-300">Source Path</label>
             <input type="text" name="sourcePath" value={data.sourcePath} onChange={handleInputChange} className="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md shadow-sm focus:ring-cyan-500 focus:border-cyan-500" />
+            <div className="mt-4">
+                <button
+                    onClick={() => handlePreviewData(data.sourcePath)}
+                    disabled={isLoadingPreview}
+                    className="w-full flex justify-center items-center px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-500 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-opacity-75 transition-colors duration-200 disabled:bg-gray-700 disabled:cursor-not-allowed"
+                >
+                    {isLoadingPreview ? (
+                        <>
+                           <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                           </svg>
+                           Loading Preview...
+                        </>
+                    ) : 'Preview Data'}
+                </button>
+            </div>
+
+            {previewError && (
+                <div className="mt-4 p-3 bg-red-900/50 border border-red-500/50 rounded-md text-red-300 text-sm">
+                    <strong>Error:</strong> {previewError}
+                </div>
+            )}
+
+            {previewData && (
+                 <div className="mt-4">
+                     <h4 className="text-md font-semibold text-gray-200 mb-2">Data Preview</h4>
+                     <div className="overflow-x-auto border border-gray-700 rounded-lg max-h-60">
+                         <table className="min-w-full text-sm text-left text-gray-300">
+                             <thead className="text-xs text-gray-400 uppercase bg-gray-700 sticky top-0">
+                                 <tr>
+                                     {previewData.headers.map(header => (
+                                         <th key={header} scope="col" className="px-4 py-2 font-medium">
+                                             {header}
+                                         </th>
+
+                                     ))}
+                                 </tr>
+                             </thead>
+                             <tbody className="bg-gray-800">
+                                 {previewData.rows.map((row, rowIndex) => (
+                                     <tr key={rowIndex} className="border-b border-gray-700 hover:bg-gray-700/50">
+                                         {row.map((cell, cellIndex) => (
+                                             <td key={cellIndex} className="px-4 py-2 whitespace-nowrap">
+                                                 {cell}
+                                             </td>
+                                         ))}
+                                     </tr>
+                                 ))}
+                             </tbody>
+                         </table>
+                     </div>
+                 </div>
+            )}
           </>
         );
       }
@@ -262,6 +393,15 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ selectedNode, onUpdat
               </>
             )}
           </>
+        );
+      }
+      case NodeType.PythonScript: {
+        return (
+            <p className="text-gray-400 text-sm p-2 bg-gray-800/50 rounded-md border border-gray-700">
+                This node executes custom Python code. Edit the script in the 'Code' tab.
+                <br/><br/>
+                The input dataframe is available as the variable <code className="bg-gray-700 text-cyan-400 px-1 rounded">df</code>. The output must be a pandas DataFrame assigned to a <code className="bg-gray-700 text-cyan-400 px-1 rounded">result_df</code> variable.
+            </p>
         );
       }
       case NodeType.TrainRegression: {
@@ -366,6 +506,23 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ selectedNode, onUpdat
                 rows={8}
                 className="mt-1 block w-full bg-gray-800 border-gray-600 rounded-md shadow-sm focus:ring-cyan-500 focus:border-cyan-500 font-mono text-sm p-2"
                 placeholder='{\n  "n_estimators": [100, 200],\n  "max_depth": [10, 20, null]\n}'
+            />
+          </>
+        );
+      }
+      case NodeType.ExportModel: {
+        const data = selectedNode.data as ExportModelNodeData;
+        return (
+          <>
+            <label className="block text-sm font-medium text-gray-300">File Path</label>
+            <p className="text-xs text-gray-400 mb-1">Path to save the model artifact (e.g., .pkl).</p>
+            <input 
+              type="text" 
+              name="filePath" 
+              value={data.filePath} 
+              onChange={handleInputChange} 
+              className="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md shadow-sm focus:ring-cyan-500 focus:border-cyan-500" 
+              placeholder="e.g., models/my_model.pkl"
             />
           </>
         );

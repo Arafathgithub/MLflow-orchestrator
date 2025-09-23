@@ -1,4 +1,8 @@
 
+
+
+export type NodeStatus = 'idle' | 'running' | 'success' | 'error';
+
 export enum NodeType {
   DataSource = 'dataSource',
   SplitData = 'splitData',
@@ -9,11 +13,14 @@ export enum NodeType {
   Deploy = 'deploy',
   HyperparameterTuning = 'hyperparameterTuning',
   FeatureEngineering = 'featureEngineering',
+  ExportModel = 'exportModel',
+  PythonScript = 'pythonScript',
 }
 
 export interface BaseNodeData {
   label: string;
   pythonCode: string;
+  status?: NodeStatus; // For execution visualization
 }
 
 export interface DataSourceNodeData extends BaseNodeData {
@@ -61,6 +68,14 @@ export interface FeatureEngineeringNodeData extends BaseNodeData {
   degree?: number;
 }
 
+export interface ExportModelNodeData extends BaseNodeData {
+  filePath: string;
+}
+
+export interface PythonScriptNodeData extends BaseNodeData {
+  // This node is primarily defined by its pythonCode from BaseNodeData
+}
+
 export type NodeData =
   | DataSourceNodeData
   | SplitDataNodeData
@@ -70,4 +85,6 @@ export type NodeData =
   | EvaluateNodeData
   | DeployNodeData
   | HyperparameterTuningNodeData
-  | FeatureEngineeringNodeData;
+  | FeatureEngineeringNodeData
+  | ExportModelNodeData
+  | PythonScriptNodeData;

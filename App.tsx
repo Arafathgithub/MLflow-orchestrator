@@ -1,5 +1,7 @@
 
 
+
+
 import React, { useState, useRef, useCallback, useMemo } from 'react';
 import ReactFlow, {
   ReactFlowProvider,
@@ -13,7 +15,7 @@ import ReactFlow, {
   NodeChange,
   EdgeChange,
 } from 'reactflow';
-import { NodeData, NodeType, EvaluateNodeData } from './types';
+import { NodeData, NodeType, EvaluateNodeData, NodeStatus } from './types';
 import { INITIAL_NODES, INITIAL_EDGES, SIDEBAR_NODES } from './constants';
 import Header from './components/Header';
 import Sidebar from './components/Sidebar';
@@ -21,6 +23,7 @@ import PropertiesPanel from './components/PropertiesPanel';
 import CustomNode from './components/customNodes/CustomNode';
 import VisualizationModal from './components/VisualizationModal';
 import ConfirmationModal from './components/ConfirmationModal';
+import ExecutionLogPanel from './components/ExecutionLogPanel';
 
 let id = INITIAL_NODES.length + 1;
 const getId = () => `dndnode_${id++}`;
@@ -35,7 +38,15 @@ const nodeTypes = {
   [NodeType.Deploy]: CustomNode,
   [NodeType.HyperparameterTuning]: CustomNode,
   [NodeType.FeatureEngineering]: CustomNode,
+  [NodeType.ExportModel]: CustomNode,
+  [NodeType.PythonScript]: CustomNode,
 };
+
+interface LogEntry {
+  timestamp: string;
+  message: string;
+  level: 'info' | 'success' | 'error';
+}
 
 const App: React.FC = () => {
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
@@ -46,6 +57,12 @@ const App: React.FC = () => {
 
   const [isSidebarVisible, setIsSidebarVisible] = useState(true);
   const [isPropertiesPanelVisible, setIsPropertiesPanelVisible] = useState(true);
+  
+  // Execution State
+  const [isExecuting, setIsExecuting] = useState(false);
+  const [executionStatus, setExecutionStatus] = useState<Record<string, NodeStatus>>({});
+  const [executionLogs, setExecutionLogs] = useState<LogEntry[]>([]);
+  const [isLogPanelVisible, setIsLogPanelVisible] = useState(false);
 
   const [history, setHistory] = useState([{ nodes: INITIAL_NODES, edges: INITIAL_EDGES }]);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -126,6 +143,27 @@ const App: React.FC = () => {
     event.dataTransfer.dropEffect = 'move';
   }, []);
 
+  const addNode = useCallback((type: NodeType, position: { x: number; y: number }) => {
+    const nodeTemplate = SIDEBAR_NODES.find(n => n.type === type);
+    if (!nodeTemplate) return;
+
+    const newNode: Node<NodeData> = {
+      id: getId(),
+      type,
+      position,
+      data: JSON.parse(JSON.stringify(nodeTemplate.data)), // Deep copy
+    };
+
+    setHistory(h => {
+      const currentFlow = h[currentIndex];
+      const newNodes = currentFlow.nodes.concat(newNode);
+      const newHistory = h.slice(0, currentIndex + 1);
+      newHistory.push({ nodes: newNodes, edges: currentFlow.edges });
+      setCurrentIndex(newHistory.length - 1);
+      return newHistory;
+    });
+  }, [currentIndex]);
+
   const onDrop = useCallback(
     (event: React.DragEvent<HTMLDivElement>) => {
       event.preventDefault();
@@ -140,34 +178,36 @@ const App: React.FC = () => {
       if (typeof type === 'undefined' || !type) {
         return;
       }
-      
-      const nodeTemplate = SIDEBAR_NODES.find(n => n.type === type);
-      if (!nodeTemplate) return;
 
       const position = reactFlowInstance.project({
         x: event.clientX - reactFlowBounds.left,
         y: event.clientY - reactFlowBounds.top,
       });
 
-      const newNode: Node<NodeData> = {
-        id: getId(),
-        type,
-        position,
-        data: JSON.parse(JSON.stringify(nodeTemplate.data)), // Deep copy
-      };
-      
-      setHistory(h => {
-          const currentFlow = h[currentIndex];
-          const newNodes = currentFlow.nodes.concat(newNode);
-          const newHistory = h.slice(0, currentIndex + 1);
-          newHistory.push({ nodes: newNodes, edges: currentFlow.edges });
-          setCurrentIndex(newHistory.length - 1);
-          return newHistory;
-      });
-
+      addNode(type, position);
     },
-    [reactFlowInstance, currentIndex]
+    [reactFlowInstance, addNode]
   );
+
+  const onInit = useCallback((instance: ReactFlowInstance) => {
+    setReactFlowInstance(instance);
+    // Manually fit view and then zoom in by 25%
+    instance.fitView();
+    const zoom = instance.getZoom();
+    instance.zoomTo(zoom * 1.25, { duration: 200 });
+  }, []);
+
+  const handleNodeDoubleClick = useCallback((type: NodeType) => {
+    if (!reactFlowInstance || !reactFlowWrapper.current) {
+      return;
+    }
+    const { width, height } = reactFlowWrapper.current.getBoundingClientRect();
+    const position = reactFlowInstance.project({
+      x: width / 2,
+      y: height / 2,
+    });
+    addNode(type, position);
+  }, [reactFlowInstance, addNode]);
   
   const onNodeClick = useCallback((_: React.MouseEvent, node: Node<NodeData>) => {
     setSelectedNode(node);
@@ -199,7 +239,7 @@ const App: React.FC = () => {
     const flow = {
       nodes: nodes.map(({ id, type, position, data }) => {
         // The `onDeleteRequest` function is a view-layer concern and should not be serialized.
-        const { onDeleteRequest, ...serializableData } = data as any;
+        const { onDeleteRequest, status, ...serializableData } = data as any;
         return { id, type, position, data: serializableData };
       }),
       edges: edges.map(({ id, source, target, sourceHandle, targetHandle }) => ({ id, source, target, sourceHandle, targetHandle })),
@@ -267,15 +307,97 @@ const App: React.FC = () => {
   const toggleSidebar = useCallback(() => setIsSidebarVisible(v => !v), []);
   const togglePropertiesPanel = useCallback(() => setIsPropertiesPanelVisible(v => !v), []);
 
+  const getExecutionOrder = useCallback((nodesToExecute: Node[], edgesToExecute: Edge[]): string[] | null => {
+      const inDegree = new Map<string, number>();
+      const adjList = new Map<string, string[]>();
+
+      for (const node of nodesToExecute) {
+          inDegree.set(node.id, 0);
+          adjList.set(node.id, []);
+      }
+
+      for (const edge of edgesToExecute) {
+          adjList.get(edge.source)!.push(edge.target);
+          inDegree.set(edge.target, (inDegree.get(edge.target) || 0) + 1);
+      }
+
+      const queue: string[] = [];
+      nodesToExecute.forEach(node => {
+          if (inDegree.get(node.id) === 0) {
+              queue.push(node.id);
+          }
+      });
+
+      const sortedOrder: string[] = [];
+      while (queue.length > 0) {
+          const u = queue.shift()!;
+          sortedOrder.push(u);
+          adjList.get(u)?.forEach(v => {
+              inDegree.set(v, inDegree.get(v)! - 1);
+              if (inDegree.get(v) === 0) {
+                  queue.push(v);
+              }
+          });
+      }
+
+      if (sortedOrder.length !== nodesToExecute.length) {
+          return null; // Cycle detected
+      }
+      return sortedOrder;
+  }, []);
+
+  const addLog = (message: string, level: LogEntry['level'] = 'info') => {
+    const timestamp = new Date().toLocaleTimeString();
+    setExecutionLogs(prev => [...prev, { timestamp, message, level }]);
+  };
+
+  const handleRunWorkflow = useCallback(async () => {
+    if (isExecuting) return;
+
+    setIsExecuting(true);
+    setIsLogPanelVisible(true);
+    setExecutionLogs([]);
+    setExecutionStatus({});
+
+    addLog('Starting workflow execution...', 'info');
+
+    const executionOrder = getExecutionOrder(nodes, edges);
+
+    if (!executionOrder) {
+        addLog('Error: A cycle was detected in the workflow graph. Cannot execute.', 'error');
+        setIsExecuting(false);
+        return;
+    }
+
+    addLog(`Execution order determined: ${executionOrder.map(id => nodes.find(n => n.id === id)?.data.label || id).join(' -> ')}`, 'info');
+
+    for (const nodeId of executionOrder) {
+        const node = nodes.find(n => n.id === nodeId);
+        if (!node) continue;
+
+        setExecutionStatus(prev => ({ ...prev, [nodeId]: 'running' }));
+        addLog(`Executing node: "${node.data.label}"...`, 'info');
+
+        await new Promise(resolve => setTimeout(resolve, 1500 + Math.random() * 1000));
+
+        setExecutionStatus(prev => ({ ...prev, [nodeId]: 'success' }));
+        addLog(`Node "${node.data.label}" completed successfully.`, 'success');
+    }
+
+    addLog('Workflow execution finished.', 'success');
+    setIsExecuting(false);
+  }, [isExecuting, nodes, edges, getExecutionOrder]);
+
   const nodesForFlow = useMemo(() => {
     return nodes.map(node => ({
         ...node,
         data: {
             ...node.data,
-            onDeleteRequest: handleDeleteRequest
+            onDeleteRequest: handleDeleteRequest,
+            status: executionStatus[node.id] || 'idle'
         }
     }));
-  }, [nodes, handleDeleteRequest]);
+  }, [nodes, handleDeleteRequest, executionStatus]);
 
   return (
     <div className="flex flex-col h-screen font-sans">
@@ -290,10 +412,12 @@ const App: React.FC = () => {
         onToggleProperties={togglePropertiesPanel}
         isSidebarVisible={isSidebarVisible}
         isPropertiesPanelVisible={isPropertiesPanelVisible}
+        onRunWorkflow={handleRunWorkflow}
+        isExecuting={isExecuting}
       />
       <div className="flex flex-grow overflow-hidden">
         <ReactFlowProvider>
-          {isSidebarVisible && <Sidebar />}
+          {isSidebarVisible && <Sidebar onNodeDoubleClick={handleNodeDoubleClick} />}
           <div className="flex-grow h-full" ref={reactFlowWrapper}>
             <ReactFlow
               nodes={nodesForFlow}
@@ -301,13 +425,12 @@ const App: React.FC = () => {
               onNodesChange={onNodesChange}
               onEdgesChange={onEdgesChange}
               onConnect={onConnect}
-              onInit={setReactFlowInstance}
+              onInit={onInit}
               onDrop={onDrop}
               onDragOver={onDragOver}
               nodeTypes={nodeTypes}
               onNodeClick={onNodeClick}
               onPaneClick={onPaneClick}
-              fitView
               className="bg-gray-800"
             >
                <div className="absolute left-4 top-4 z-10 p-2 bg-gray-900/50 rounded-lg backdrop-blur-sm">
@@ -341,6 +464,11 @@ const App: React.FC = () => {
         <p>Are you sure you want to delete the node <strong className="text-cyan-400">"{nodeToDelete?.data.label}"</strong>?</p>
         <p className="mt-2 text-sm text-gray-400">This will also remove all connected edges. You can undo this action.</p>
       </ConfirmationModal>
+      <ExecutionLogPanel 
+        logs={executionLogs}
+        isOpen={isLogPanelVisible}
+        onClose={() => setIsLogPanelVisible(false)}
+      />
     </div>
   );
 };
