@@ -7,9 +7,10 @@ interface HeaderProps {
   onRedo: () => void;
   canUndo: boolean;
   canRedo: boolean;
+  onLaunchMlflow: () => void;
 }
 
-const Header: React.FC<HeaderProps> = ({ onExport, onUndo, onRedo, canUndo, canRedo }) => {
+const Header: React.FC<HeaderProps> = ({ onExport, onUndo, onRedo, canUndo, canRedo, onLaunchMlflow }) => {
   return (
     <header className="bg-gray-900/80 backdrop-blur-sm border-b border-gray-700/50 p-3 flex justify-between items-center z-20">
       <div className="flex items-center space-x-3">
@@ -35,12 +36,24 @@ const Header: React.FC<HeaderProps> = ({ onExport, onUndo, onRedo, canUndo, canR
             Redo
           </button>
         </div>
-        <button
-          onClick={onExport}
-          className="px-4 py-2 bg-cyan-500 text-white rounded-md hover:bg-cyan-600 focus:outline-none focus:ring-2 focus:ring-cyan-400 focus:ring-opacity-75 transition-colors duration-200"
-        >
-          Export Workflow
-        </button>
+        <div className="flex items-center space-x-2">
+            <button
+                onClick={onLaunchMlflow}
+                className="flex items-center space-x-2 px-4 py-2 bg-orange-500 text-white rounded-md hover:bg-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-400 focus:ring-opacity-75 transition-colors duration-200"
+                title="Open MLflow UI in a new tab"
+            >
+                <span>MLflow UI</span>
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                </svg>
+            </button>
+            <button
+            onClick={onExport}
+            className="px-4 py-2 bg-cyan-500 text-white rounded-md hover:bg-cyan-600 focus:outline-none focus:ring-2 focus:ring-cyan-400 focus:ring-opacity-75 transition-colors duration-200"
+            >
+            Export Workflow
+            </button>
+        </div>
       </div>
     </header>
   );

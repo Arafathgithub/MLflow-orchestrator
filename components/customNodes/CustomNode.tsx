@@ -1,5 +1,6 @@
+
 import React, { memo } from 'react';
-import { Handle, Position, NodeProps, useReactFlow } from 'reactflow';
+import { Handle, Position, NodeProps } from 'reactflow';
 import { NodeData, NodeType } from '../../types';
 
 const ICONS: Record<string, React.ReactNode> = {
@@ -35,14 +36,16 @@ const NodeInfo: React.FC<{ label: string; value: React.ReactNode }> = ({ label, 
 
 
 const CustomNode: React.FC<NodeProps<NodeData>> = ({ id, data, type, selected }) => {
-    const { deleteElements } = useReactFlow();
     const nodeType = type as NodeType;
     const styles = NODE_STYLES[nodeType];
     
     const handleDelete = (event: React.MouseEvent) => {
         event.stopPropagation();
-        if (window.confirm(`Are you sure you want to delete the "${data.label}" node?`)) {
-            deleteElements({ nodes: [{ id }] });
+        // The confirmation is now handled by a custom modal in the parent component.
+        // This function just signals the intent to delete.
+        const augmentedData = data as NodeData & { onDeleteRequest?: (nodeId: string) => void };
+        if (augmentedData.onDeleteRequest) {
+            augmentedData.onDeleteRequest(id);
         }
     };
 

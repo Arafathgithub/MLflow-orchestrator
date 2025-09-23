@@ -79,7 +79,54 @@ df[cols_to_scale] = scaler.fit_transform(df[cols_to_scale])`
     category: SIDEBAR_NODE_TYPES.EVALUATION,
     label: 'Deploy Model',
     type: NodeType.Deploy,
-    data: { label: 'Deploy Model', targetEnv: 'Staging', modelName: 'my-model', pythonCode: 'import mlflow\n\n# Assuming a trained model is available\n# Log and register the model with MLflow\nmlflow.sklearn.log_model(model, "my_model")\nmlflow.register_model(\n    "runs:/{mlflow.active_run().info.run_id}/my_model",\n    "production_model"\n)' },
+    data: { 
+      label: 'Deploy Model', 
+      targetEnv: 'Staging', 
+      modelName: 'my-model', 
+      pythonCode: `import mlflow
+from mlflow.tracking import MlflowClient
+
+# This code assumes a trained 'model' object is available from a previous step.
+# It also assumes 'params' and 'metrics' dictionaries are available.
+# Example data (replace with actual variables from your pipeline):
+params = {"n_estimators": 100, "max_depth": 10, "random_state": 42}
+metrics = {"accuracy": 0.95, "f1_score": 0.92}
+
+# Start an MLflow run to log the model, parameters, and metrics
+with mlflow.start_run() as run:
+    print("MLflow Run ID:", run.info.run_id)
+
+    # Log parameters
+    print("Logging parameters:", params)
+    mlflow.log_params(params)
+
+    # Log metrics
+    print("Logging metrics:", metrics)
+    mlflow.log_metrics(metrics)
+
+    # Log the model
+    print("Logging model:", "my-model")
+    mlflow.sklearn.log_model(model, artifact_path="my-model")
+
+    # Register the model in the MLflow Model Registry
+    model_uri = f"runs:/{run.info.run_id}/my-model"
+    print(f"Registering model from {model_uri} as 'my-model'")
+    registered_model = mlflow.register_model(
+        model_uri=model_uri,
+        name="my-model"
+    )
+
+    # Transition the model version to the specified stage (Staging or Production)
+    client = MlflowClient()
+    print(f"Transitioning model version {registered_model.version} to 'Staging'")
+    client.transition_model_version_stage(
+        name="my-model",
+        version=registered_model.version,
+        stage="Staging"
+    )
+
+print("Deployment complete.")`
+    },
   },
 ];
 

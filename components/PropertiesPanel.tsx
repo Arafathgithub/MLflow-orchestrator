@@ -58,6 +58,52 @@ df = pd.concat([df, interaction_df], axis=1)`;
   }
 }
 
+const generateDeployCode = (data: DeployNodeData): string => {
+  return `import mlflow
+from mlflow.tracking import MlflowClient
+
+# This code assumes a trained 'model' object is available from a previous step.
+# It also assumes 'params' and 'metrics' dictionaries are available.
+# Example data (replace with actual variables from your pipeline):
+params = {"n_estimators": 100, "max_depth": 10, "random_state": 42}
+metrics = {"accuracy": 0.95, "f1_score": 0.92}
+
+# Start an MLflow run to log the model, parameters, and metrics
+with mlflow.start_run() as run:
+    print("MLflow Run ID:", run.info.run_id)
+
+    # Log parameters
+    print("Logging parameters:", params)
+    mlflow.log_params(params)
+
+    # Log metrics
+    print("Logging metrics:", metrics)
+    mlflow.log_metrics(metrics)
+
+    # Log the model
+    print("Logging model:", "${data.modelName}")
+    mlflow.sklearn.log_model(model, artifact_path="${data.modelName}")
+
+    # Register the model in the MLflow Model Registry
+    model_uri = f"runs:/{run.info.run_id}/${data.modelName}"
+    print(f"Registering model from {model_uri} as '${data.modelName}'")
+    registered_model = mlflow.register_model(
+        model_uri=model_uri,
+        name="${data.modelName}"
+    )
+
+    # Transition the model version to the specified stage (Staging or Production)
+    client = MlflowClient()
+    print(f"Transitioning model version {registered_model.version} to '${data.targetEnv}'")
+    client.transition_model_version_stage(
+        name="${data.modelName}",
+        version=registered_model.version,
+        stage="${data.targetEnv}"
+    )
+
+print("Deployment complete.")`;
+};
+
 const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ selectedNode, onUpdate, onVisualize, nodes, edges }) => {
   const [activeTab, setActiveTab] = useState<'properties' | 'code'>('properties');
   const [activePanelTab, setActivePanelTab] = useState<'inspector' | 'json'>('inspector');
@@ -128,6 +174,12 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ selectedNode, onUpdat
       const currentData = selectedNode.data as FeatureEngineeringNodeData;
       const updatedData = { ...currentData, ...newPartialData };
       const pythonCode = generateFeatureEngineeringCode(updatedData);
+      onUpdate(selectedNode.id, { ...newPartialData, pythonCode });
+    } else if (selectedNode?.type === NodeType.Deploy) {
+      const newPartialData = { [name]: parsedValue };
+      const currentData = selectedNode.data as DeployNodeData;
+      const updatedData = { ...currentData, ...newPartialData };
+      const pythonCode = generateDeployCode(updatedData);
       onUpdate(selectedNode.id, { ...newPartialData, pythonCode });
     } else {
       onUpdate(selectedNode.id, { [name]: parsedValue } as any);
