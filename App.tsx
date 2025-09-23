@@ -1,4 +1,5 @@
 
+
 import React, { useState, useRef, useCallback, useMemo } from 'react';
 import ReactFlow, {
   ReactFlowProvider,
@@ -42,6 +43,9 @@ const App: React.FC = () => {
   const [selectedNode, setSelectedNode] = useState<Node<NodeData> | null>(null);
   const [visualizationNode, setVisualizationNode] = useState<Node<NodeData> | null>(null);
   const [nodeToDelete, setNodeToDelete] = useState<Node<NodeData> | null>(null);
+
+  const [isSidebarVisible, setIsSidebarVisible] = useState(true);
+  const [isPropertiesPanelVisible, setIsPropertiesPanelVisible] = useState(true);
 
   const [history, setHistory] = useState([{ nodes: INITIAL_NODES, edges: INITIAL_EDGES }]);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -260,6 +264,9 @@ const App: React.FC = () => {
     window.open(mlflowUiUrl, '_blank', 'noopener,noreferrer');
   }, []);
 
+  const toggleSidebar = useCallback(() => setIsSidebarVisible(v => !v), []);
+  const togglePropertiesPanel = useCallback(() => setIsPropertiesPanelVisible(v => !v), []);
+
   const nodesForFlow = useMemo(() => {
     return nodes.map(node => ({
         ...node,
@@ -272,10 +279,21 @@ const App: React.FC = () => {
 
   return (
     <div className="flex flex-col h-screen font-sans">
-      <Header onExport={onExport} onUndo={undo} onRedo={redo} canUndo={canUndo} canRedo={canRedo} onLaunchMlflow={handleLaunchMlflow} />
+      <Header 
+        onExport={onExport} 
+        onUndo={undo} 
+        onRedo={redo} 
+        canUndo={canUndo} 
+        canRedo={canRedo} 
+        onLaunchMlflow={handleLaunchMlflow}
+        onToggleSidebar={toggleSidebar}
+        onToggleProperties={togglePropertiesPanel}
+        isSidebarVisible={isSidebarVisible}
+        isPropertiesPanelVisible={isPropertiesPanelVisible}
+      />
       <div className="flex flex-grow overflow-hidden">
         <ReactFlowProvider>
-          <Sidebar />
+          {isSidebarVisible && <Sidebar />}
           <div className="flex-grow h-full" ref={reactFlowWrapper}>
             <ReactFlow
               nodes={nodesForFlow}
@@ -297,13 +315,15 @@ const App: React.FC = () => {
                 </div>
             </ReactFlow>
           </div>
-          <PropertiesPanel 
-            selectedNode={selectedNode} 
-            onUpdate={updateNodeConfig} 
-            onVisualize={handleVisualize} 
-            nodes={nodes}
-            edges={edges}
-          />
+          {isPropertiesPanelVisible && (
+            <PropertiesPanel 
+                selectedNode={selectedNode} 
+                onUpdate={updateNodeConfig} 
+                onVisualize={handleVisualize} 
+                nodes={nodes}
+                edges={edges}
+            />
+          )}
         </ReactFlowProvider>
       </div>
        {visualizationNode && (
